@@ -13,50 +13,80 @@ type Limit struct {
 }
 
 const (
-	DirectionASC  = "ASCENDING"
-	DirectionDESC = "DESCENDING"
+	LimitAsc  = "Ascending"
+	LimitDesc = "Descending"
 )
 
 type Column struct {
-	AsNumber  bool   `json:"asNumber"`
 	Dimension string `json:"dimension"`
-	Direction string `json:"direction"`
+	Direction string `json:"direction,omitempty"`
 }
 
-func LimitDefault(limit int, columns ...[]Column) *Limit {
-	var realColums []Column
-	if len(columns) > 0 {
-		realColums = columns[0]
-	}
+func LimitDefault(limit int, columns ...Column) *Limit {
 	return &Limit{
 		Type:    "default",
 		Limit:   limit,
-		Columns: realColums,
+		Columns: columns,
 	}
 }
+
+// ---------------------------------
+// PagingSpec
+// ---------------------------------
+
+type PagingSpec struct {
+	PagingIdentifiers PagingIdentifiers `json:"pagingIdentifiers"`
+	Threshold         int               `json:"threshold"`
+}
+
+type PagingIdentifiers interface{}
+
+type PagingIdEmpty struct{}
 
 // ---------------------------------
 // SearchQuerySpec
 // ---------------------------------
 
 type SearchQuery struct {
-	Type   string        `json:"type"`
-	Value  interface{}   `json:"value,omitempty"`
-	Values []interface{} `json:"values,omitempty"`
+	Type          string         `json:"type"`
+	Value         string         `json:"value,omitempty"`
+	Values        []string       `json:"values,omitempty"`
+	CaseSensitive *CaseSensitive `json:"caseSensitive,omitempty"`
 }
 
-func SearchQueryInsensitiveContains(value interface{}) *SearchQuery {
+// Options
+
+type SearchQueryOption interface {
+	apply(*SearchQuery)
+}
+
+type CaseSensitive bool
+
+func (b CaseSensitive) apply(c *SearchQuery) { c.CaseSensitive = &b }
+
+// Constructors
+
+func SearchQueryInsensitiveContains(value string) *SearchQuery {
 	return &SearchQuery{
 		Type:  "insensitive_contains",
 		Value: value,
 	}
 }
 
-func SearchQueryFragmentSearch(values []interface{}) *SearchQuery {
-	return &SearchQuery{
-		Type:   "fragment",
-		Values: values,
+func SearchQueryFragmentSearch(values []string, options ...SearchQueryOption) *SearchQuery {
+	query := SearchQuery{Type: "fragment", Values: values}
+	for _, opt := range options {
+		opt.apply(&query)
 	}
+	return &query
+}
+
+func SearchQueryContains(value string, options ...SearchQueryOption) *SearchQuery {
+	query := SearchQuery{Type: "contains", Value: value}
+	for _, opt := range options {
+		opt.apply(&query)
+	}
+	return &query
 }
 
 // ---------------------------------
@@ -87,8 +117,20 @@ func ToIncludeList(columns []string) *ToInclude {
 type TopNMetric struct {
 	Type         string      `json:"type"`
 	Metric       interface{} `json:"metric,omitempty"`
-	PreviousStop string      `json:"previousStop"`
+	PreviousStop string      `json:"previousStop,omitempty"`
 }
+
+// options
+
+type TopNMetricOption interface {
+	apply(*TopNMetric)
+}
+
+type PreviousStop string
+
+func (s PreviousStop) apply(c *TopNMetric) { c.PreviousStop = string(s) }
+
+// constructors
 
 func TopNMetricNumeric(metric string) *TopNMetric {
 	return &TopNMetric{
@@ -97,18 +139,24 @@ func TopNMetricNumeric(metric string) *TopNMetric {
 	}
 }
 
-func TopNMetricLexicographic(previousStop string) *TopNMetric {
-	return &TopNMetric{
-		Type:         "lexicographic",
-		PreviousStop: previousStop,
+func TopNMetricLexicographic(options ...TopNMetricOption) *TopNMetric {
+	tnm := TopNMetric{
+		Type: "lexicographic",
 	}
+	for _, opt := range options {
+		opt.apply(&tnm)
+	}
+	return &tnm
 }
 
-func TopNMetricAlphaNumeric(previousStop string) *TopNMetric {
-	return &TopNMetric{
-		Type:         "alphaNumeric",
-		PreviousStop: previousStop,
+func TopNMetricAlphaNumeric(options ...TopNMetricOption) *TopNMetric {
+	tnm := TopNMetric{
+		Type: "alphaNumeric",
 	}
+	for _, opt := range options {
+		opt.apply(&tnm)
+	}
+	return &tnm
 }
 
 func TopNMetricInverted(metric *TopNMetric) *TopNMetric {
@@ -130,3 +178,48 @@ var (
 	SearchSortLexicographic = &SearchSort{Type: "lexicographic"}
 	SearchSortStrlen        = &SearchSort{Type: "strlen"}
 )
+
+// ---------------------------------
+// Lookup
+// ---------------------------------
+
+type Lookup struct {
+	Type       string            `json:"type"`
+	Map        map[string]string `json:"map,omitempty"`
+	Namespace  string            `json:"namespace,omitempty"`
+	IsOneToOne *IsOneToOne       `json:"isOneToOne,omitempty"`
+}
+
+// Options
+
+type LookupOption interface {
+	apply(*Lookup)
+}
+
+type IsOneToOne bool
+
+func (b IsOneToOne) apply(c *Lookup) { c.IsOneToOne = &b }
+
+// Constructors
+
+func LookupNamespace(namespace string, options ...LookupOption) *Lookup {
+	lu := Lookup{
+		Type:      "namespace",
+		Namespace: namespace,
+	}
+	for _, opt := range options {
+		opt.apply(&lu)
+	}
+	return &lu
+}
+
+func LookupMap(lookupmap map[string]string, options ...LookupOption) *Lookup {
+	lu := Lookup{
+		Type: "map",
+		Map:  lookupmap,
+	}
+	for _, opt := range options {
+		opt.apply(&lu)
+	}
+	return &lu
+}

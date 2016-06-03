@@ -4,9 +4,14 @@ type Having struct {
 	Type        string      `json:"type"`
 	Aggregation string      `json:"aggregation,omitempty"`
 	Value       interface{} `json:"value,omitempty"`
+	Dimension   string      `json:"dimension,omitempty"`
 	HavingSpec  *Having     `json:"havingSpec,omitempty"`
 	HavingSpecs []*Having   `json:"havingSpecs,omitempty"`
 }
+
+// ---------------------------------
+// Constructors
+// ---------------------------------
 
 func HavingEqualTo(agg string, value interface{}) *Having {
 	return &Having{
@@ -32,6 +37,14 @@ func HavingLessThan(agg string, value interface{}) *Having {
 	}
 }
 
+func HavingDimSelector(dimension string, value interface{}) *Having {
+	return &Having{
+		Type:      "dimSelector",
+		Dimension: dimension,
+		Value:     value,
+	}
+}
+
 func HavingAnd(havings ...*Having) *Having {
 	return joinHavings(havings, "and")
 }
@@ -46,6 +59,10 @@ func HavingNot(having *Having) *Having {
 		HavingSpec: having,
 	}
 }
+
+// ---------------------------------
+// Helpers
+// ---------------------------------
 
 func joinHavings(havings []*Having, connector string) *Having {
 	// Remove null havings.

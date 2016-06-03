@@ -5,15 +5,33 @@ import (
 )
 
 type Aggregation struct {
-	Type        string   `json:"type"`
-	Name        string   `json:"name,omitempty"`
-	FieldName   string   `json:"fieldName,omitempty"`
-	FieldNames  []string `json:"fieldNames,omitempty"`
-	FnAggregate string   `json:"fnAggregate,omitempty"`
-	FnCombine   string   `json:"fnCombine,omitempty"`
-	FnReset     string   `json:"fnReset,omitempty"`
-	ByRow       bool     `json:"byRow,omitempty"`
+	Type        string       `json:"type"`
+	Name        string       `json:"name,omitempty"`
+	FieldName   string       `json:"fieldName,omitempty"`
+	FieldNames  []string     `json:"fieldNames,omitempty"`
+	FnAggregate string       `json:"fnAggregate,omitempty"`
+	FnCombine   string       `json:"fnCombine,omitempty"`
+	FnReset     string       `json:"fnReset,omitempty"`
+	ByRow       *ByRow       `json:"byRow,omitempty"`
+	AggFilter   *Filter      `json:"filter,omitempty"`
+	Aggregator  *Aggregation `json:"aggregator,omitempty"`
 }
+
+// ---------------------------------
+// Options
+// ---------------------------------
+
+type AggOption interface {
+	apply(*Aggregation)
+}
+
+type ByRow bool
+
+func (b ByRow) apply(c *Aggregation) { c.ByRow = &b }
+
+// ---------------------------------
+// Constructors
+// ---------------------------------
 
 func AggRawJson(rawJson string) Aggregation {
 	agg := &Aggregation{}
@@ -44,17 +62,33 @@ func AggDoubleSum(name, fieldName string) Aggregation {
 	}
 }
 
-func AggMin(name, fieldName string) Aggregation {
+func AggLongMin(name, fieldName string) Aggregation {
 	return Aggregation{
-		Type:      "min",
+		Type:      "longMin",
 		Name:      name,
 		FieldName: fieldName,
 	}
 }
 
-func AggMax(name, fieldName string) Aggregation {
+func AggLongMax(name, fieldName string) Aggregation {
 	return Aggregation{
-		Type:      "max",
+		Type:      "longMax",
+		Name:      name,
+		FieldName: fieldName,
+	}
+}
+
+func AggDoubleMin(name, fieldName string) Aggregation {
+	return Aggregation{
+		Type:      "doubleMin",
+		Name:      name,
+		FieldName: fieldName,
+	}
+}
+
+func AggDoubleMax(name, fieldName string) Aggregation {
+	return Aggregation{
+		Type:      "doubleMax",
 		Name:      name,
 		FieldName: fieldName,
 	}
@@ -71,15 +105,38 @@ func AggJavaScript(name, fnAggregate, fnCombine, fnReset string, fieldNames []st
 	}
 }
 
-func AggCardinality(name string, fieldNames []string, byRow ...bool) Aggregation {
-	isByRow := false
-	if len(byRow) != 0 {
-		isByRow = byRow[0]
-	}
-	return Aggregation{
+func AggCardinality(name string, fieldNames []string, options ...AggOption) Aggregation {
+	agg := Aggregation{
 		Type:       "cardinality",
 		Name:       name,
 		FieldNames: fieldNames,
-		ByRow:      isByRow,
+	}
+	for _, opt := range options {
+		opt.apply(&agg)
+	}
+	return agg
+}
+
+func AggHyperUnique(name, fieldName string) Aggregation {
+	return Aggregation{
+		Type:      "hyperUnique",
+		Name:      name,
+		FieldName: fieldName,
+	}
+}
+
+func AggFiltered(aggFilter Filter, aggregation Aggregation) Aggregation {
+	return Aggregation{
+		Type:       "filtered",
+		AggFilter:  &aggFilter,
+		Aggregator: &aggregation,
+	}
+}
+
+func AggThetaSketch(name, fieldName string) Aggregation {
+	return Aggregation{
+		Type:      "thetaSketch",
+		Name:      name,
+		FieldName: fieldName,
 	}
 }

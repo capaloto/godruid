@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 )
 
-// Check http://druid.io/docs/0.6.154/Querying.html#query-operators for detail description.
+// Check http://druid.io/docs/0.9.0/querying/querying.html for detail description.
 
 // The Query interface stands for any kinds of druid query.
 type Query interface {
@@ -20,7 +20,7 @@ type QueryGroupBy struct {
 	QueryType        string                 `json:"queryType"`
 	DataSource       string                 `json:"dataSource"`
 	Dimensions       []DimSpec              `json:"dimensions"`
-	Granularity      Granlarity             `json:"granularity"`
+	Granularity      Granularity            `json:"granularity"`
 	LimitSpec        *Limit                 `json:"limitSpec,omitempty"`
 	Having           *Having                `json:"having,omitempty"`
 	Filter           *Filter                `json:"filter,omitempty"`
@@ -56,8 +56,9 @@ func (q *QueryGroupBy) onResponse(content []byte) error {
 type QuerySearch struct {
 	QueryType        string                 `json:"queryType"`
 	DataSource       string                 `json:"dataSource"`
-	Granularity      Granlarity             `json:"granularity"`
+	Granularity      Granularity            `json:"granularity"`
 	Filter           *Filter                `json:"filter,omitempty"`
+	Limit            int                    `json:"filter,omitempty"`
 	Intervals        []string               `json:"intervals"`
 	SearchDimensions []string               `json:"searchDimensions,omitempty"`
 	Query            *SearchQuery           `json:"query"`
@@ -93,31 +94,90 @@ func (q *QuerySearch) onResponse(content []byte) error {
 // ---------------------------------
 
 type QuerySegmentMetadata struct {
-	QueryType  string                 `json:"queryType"`
-	DataSource string                 `json:"dataSource"`
-	Intervals  []string               `json:"intervals"`
-	ToInclude  *ToInclude             `json:"toInclude,omitempty"`
-	Merge      interface{}            `json:"merge,omitempty"`
-	Context    map[string]interface{} `json:"context,omitempty"`
+	QueryType              string                 `json:"queryType"`
+	DataSource             string                 `json:"dataSource"`
+	Intervals              []string               `json:"intervals"`
+	ToInclude              *ToInclude             `json:"toInclude,omitempty"`
+	Merge                  interface{}            `json:"merge,omitempty"`
+	Context                map[string]interface{} `json:"context,omitempty"`
+	AnalysisTypes          []string               `json:"analysisTypes,omitempty"`
+	LenientAggregatorMerge bool                   `json:"lenientAggregatorMerge,omitempty"`
 
 	QueryResult []SegmentMetaData `json:"-"`
 }
 
 type SegmentMetaData struct {
-	Id        string                `json:"id"`
-	Intervals []string              `json:"intervals"`
-	Columns   map[string]ColumnItem `json:"columns"`
+	Id          string                    `json:"id"`
+	Intervals   []string                  `json:"intervals"`
+	Columns     map[string]ColumnItem     `json:"columns"`
+	Aggregators map[string]AggregatorItem `json:"aggregators"`
+	Size        int                       `json:"size"`
+	NumRows     int                       `json:"numRows"`
 }
 
 type ColumnItem struct {
-	Type        string      `json:"type"`
-	Size        int         `json:"size"`
-	Cardinality interface{} `json:"cardinality"`
+	Type              string      `json:"type"`
+	Size              int         `json:"size,omitempty"`
+	HasMultipleValues bool        `json":hasMultipleValues"`
+	ErrorMessage      string      `json:"errorMessage"`
+	Cardinality       interface{} `json:"cardinality,omitempty"`
+}
+
+type AggregatorItem struct {
+	Type      string `json:"type"`
+	Name      string `json:"name"`
+	FieldName string `json:"fieldName"`
 }
 
 func (q *QuerySegmentMetadata) setup() { q.QueryType = "segmentMetadata" }
 func (q *QuerySegmentMetadata) onResponse(content []byte) error {
 	res := new([]SegmentMetaData)
+	err := json.Unmarshal(content, res)
+	if err != nil {
+		return err
+	}
+	q.QueryResult = *res
+	return nil
+}
+
+// ---------------------------------
+// Select Query
+// ---------------------------------
+
+type QuerySelect struct {
+	QueryType   string                 `json:"queryType"`
+	DataSource  string                 `json:"dataSource"`
+	Intervals   []string               `json:"intervals"`
+	Descending  bool                   `json:"descending,omitempty"`
+	Filter      *Filter                `json:"filter,omitempty"`
+	Dimensions  []string               `json:"dimensions,omitempty"`
+	Metrics     []string               `json:"metrics,omitempty"`
+	PagingSpec  PagingSpec             `json:"pagingSpec"`
+	Granularity Granularity            `json:"granularity"`
+	Context     map[string]interface{} `json:"context,omitempty"`
+
+	QueryResult []SelectQueryItem `json:"-"`
+}
+
+type SelectQueryItem struct {
+	Timestamp string       `json:"timestamp"`
+	Result    SelectResult `json:"result"`
+}
+
+type SelectResult struct {
+	PagingIdentifiers map[string]int `json:"pagingIdentifiers"`
+	Events            []SelectEvent  `json:"events"`
+}
+
+type SelectEvent struct {
+	SegmentId string                 `json:"segmentId"`
+	Offset    int                    `json:"offset"`
+	Event     map[string]interface{} `json:"event"`
+}
+
+func (q *QuerySelect) setup() { q.QueryType = "select" }
+func (q *QuerySelect) onResponse(content []byte) error {
+	res := new([]SelectQueryItem)
 	err := json.Unmarshal(content, res)
 	if err != nil {
 		return err
@@ -167,11 +227,12 @@ func (q *QueryTimeBoundary) onResponse(content []byte) error {
 type QueryTimeseries struct {
 	QueryType        string                 `json:"queryType"`
 	DataSource       string                 `json:"dataSource"`
-	Granularity      Granlarity             `json:"granularity"`
+	Descending       bool                   `json:"descending,omitempty"`
+	Intervals        []string               `json:"intervals"`
+	Granularity      Granularity            `json:"granularity"`
 	Filter           *Filter                `json:"filter,omitempty"`
 	Aggregations     []Aggregation          `json:"aggregations"`
 	PostAggregations []PostAggregation      `json:"postAggregations,omitempty"`
-	Intervals        []string               `json:"intervals"`
 	Context          map[string]interface{} `json:"context,omitempty"`
 
 	QueryResult []Timeseries `json:"-"`
@@ -200,7 +261,7 @@ func (q *QueryTimeseries) onResponse(content []byte) error {
 type QueryTopN struct {
 	QueryType        string                 `json:"queryType"`
 	DataSource       string                 `json:"dataSource"`
-	Granularity      Granlarity             `json:"granularity"`
+	Granularity      Granularity            `json:"granularity"`
 	Dimension        DimSpec                `json:"dimension"`
 	Threshold        int                    `json:"threshold"`
 	Metric           *TopNMetric            `json:"metric"`
